@@ -25,11 +25,48 @@ app.use((req, res, next) => {
 
   const allowedReferrer = process.env.ALLOWED_ORIGIN;
 
-  const blockedAgents = [/Mozilla/, /Chrome/, /Safari/, /Firefox/, /Edge/];
+  const blockedAgents = [
+    /Mozilla/i,
+    /Chrome/i,
+    /Safari/i,
+    /Firefox/i,
+    /Edge/i,
+    /Opera/i,
+    /Brave/i,
+    /Vivaldi/i,
+    /IEMobile/i,
+    /UCBrowser/i,
+    /SamsungBrowser/i,
+    /QQBrowser/i,
+    /Baidubrowser/i,
+    /2345Explorer/i,
+    /TheWorld/i,
+    /Sogou/i,
+    /Qupzilla/i,
+    /Maxthon/i,
+    /Yandex/i,
+    /PhantomJS/i,
+    /Seamonkey/i,
+    /Konqueror/i,
+    /Midori/i,
+    /Epiphany/i,
+    /Netscape/i,
+    /Lynx/i,
+    /Links/i,
+    /w3m/i,
+    /Amaya/i,
+    /Flock/i,
+    /Iceweasel/i,
+    /IceCat/i,
+    /PaleMoon/i,
+    /Waterfox/i,
+    /K-Meleon/i,
+    /Comodo/i,
+  ];
 
   if (
     apiKey !== validApiKey ||
-    // !referrer.startsWith(allowedReferrer) ||
+    !referrer.startsWith(allowedReferrer) ||
     blockedAgents.some((pattern) => pattern.test(userAgent))
   ) {
     return res.status(403).json({ error: "403 Forbidden" });

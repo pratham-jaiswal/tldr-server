@@ -44,7 +44,7 @@ app.use((req, res, next) => {
       httpOnly: true,
       secure: true,
       sameSite: "None",
-      maxAge: 60 * 60 * 1000,
+      maxAge: 6 * 60 * 60 * 1000,
     });
     req.userId = userId;
   } else {
@@ -54,8 +54,8 @@ app.use((req, res, next) => {
 });
 
 const limiter = rateLimit({
-  windowMs: 1 * 60 * 60 * 1000,
-  max: 1,
+  windowMs: 6 * 60 * 60 * 1000,
+  max: 2,
   message: "You're only allowed to make two api request per hour.",
   statusCode: 429,
   standardHeaders: "draft-8",

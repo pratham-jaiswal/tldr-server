@@ -55,7 +55,7 @@ app.use((req, res, next) => {
 
 const limiter = rateLimit({
   windowMs: 1 * 60 * 60 * 1000,
-  max: 2,
+  max: 1,
   message: "You're only allowed to make two api request per hour.",
   statusCode: 429,
   standardHeaders: "draft-8",

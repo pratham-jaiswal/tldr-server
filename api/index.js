@@ -20,6 +20,7 @@ app.get("/health", (req, res) => {
 
 const corsOptions = {
   origin: `${process.env.ALLOWED_ORIGIN}`,
+  credentials: true,
 };
 app.use(cors(corsOptions));
 
@@ -38,11 +39,12 @@ app.use((req, res, next) => {
 
 app.use((req, res, next) => {
   if (!req.cookies.user_id) {
-    const userId = crypto.randomUUID();
+    const userId = Math.random().toString(36).substring(2);
     res.cookie("user_id", userId, {
       httpOnly: true,
       secure: true,
-      sameSite: "strict",
+      sameSite: "None",
+      maxAge: 60 * 60 * 1000,
     });
     req.userId = userId;
   } else {
@@ -57,7 +59,7 @@ const limiter = rateLimit({
   message: "You're only allowed to make two api request per hour.",
   statusCode: 429,
   standardHeaders: "draft-8",
-  keyGenerator: (req) => req.userId,
+  keyGenerator: (req) => req.cookies.user_id ? req.cookies.user_id : req.ip,
 });
 
 app.use("/tldr/text", limiter);

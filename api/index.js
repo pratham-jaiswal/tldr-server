@@ -8,9 +8,11 @@ import "@dotenvx/dotenvx/config";
 import { rateLimit } from "express-rate-limit";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import mongoose from "mongoose";
+import cookieParser from "cookie-parser";
 
 const app = express();
 app.use(express.json());
+app.use(cookieParser());
 
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
@@ -27,10 +29,25 @@ app.use((req, res, next) => {
   const validApiKey = process.env.API_KEY;
 
   const allowedReferrer = process.env.ALLOWED_ORIGIN;
-  if (apiKey !== validApiKey) {
+  if (apiKey !== validApiKey || !referrer.startsWith(allowedReferrer)) {
     return res.status(403).json({ error: "403 Forbidden" });
   }
 
+  next();
+});
+
+app.use((req, res, next) => {
+  if (!req.cookies.user_id) {
+    const userId = crypto.randomUUID();
+    res.cookie("user_id", userId, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "strict",
+    });
+    req.userId = userId;
+  } else {
+    req.userId = req.cookies.user_id;
+  }
   next();
 });
 
@@ -40,11 +57,7 @@ const limiter = rateLimit({
   message: "You're only allowed to make two api request per hour.",
   statusCode: 429,
   standardHeaders: "draft-8",
-  keyGenerator: (req) => {
-    console.log(req.headers["x-forwarded-for"]);
-    console.log(req.ip);
-    return req.headers["x-forwarded-for"] || req.ip;
-  },
+  keyGenerator: (req) => req.userId,
 });
 
 app.use("/tldr/text", limiter);

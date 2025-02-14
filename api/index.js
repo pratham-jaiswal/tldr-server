@@ -24,55 +24,10 @@ app.use(cors(corsOptions));
 app.use((req, res, next) => {
   const apiKey = req.get("x-api-key");
   const referrer = req.get("Referer") || "";
-  const userAgent = req.get("User-Agent") || "";
   const validApiKey = process.env.API_KEY;
 
   const allowedReferrer = process.env.ALLOWED_ORIGIN;
-
-  const blockedAgents = [
-    /Mozilla/i,
-    /Chrome/i,
-    /Safari/i,
-    /Firefox/i,
-    /Edge/i,
-    /Opera/i,
-    /Brave/i,
-    /Vivaldi/i,
-    /IEMobile/i,
-    /UCBrowser/i,
-    /SamsungBrowser/i,
-    /QQBrowser/i,
-    /Baidubrowser/i,
-    /2345Explorer/i,
-    /TheWorld/i,
-    /Sogou/i,
-    /Qupzilla/i,
-    /Maxthon/i,
-    /Yandex/i,
-    /PhantomJS/i,
-    /Seamonkey/i,
-    /Konqueror/i,
-    /Midori/i,
-    /Epiphany/i,
-    /Netscape/i,
-    /Lynx/i,
-    /Links/i,
-    /w3m/i,
-    /Amaya/i,
-    /Flock/i,
-    /Iceweasel/i,
-    /IceCat/i,
-    /PaleMoon/i,
-    /Waterfox/i,
-    /K-Meleon/i,
-    /Comodo/i,
-  ];
-
-  if (
-    apiKey !== validApiKey ||
-    !referrer.startsWith(allowedReferrer) ||
-    blockedAgents.some((pattern) => pattern.test(userAgent))
-  ) {
+  if (apiKey !== validApiKey) {
     return res.status(403).json({ error: "403 Forbidden" });
   }
 
@@ -134,7 +89,7 @@ function delay(ms) {
 
 function generateTLDR(content, provider) {
   const llm =
-    provider === "openai"
+    provider === "OpenAI GPT-4o mini"
       ? new ChatOpenAI({
           model: "gpt-4o-mini",
           temperature: 0,
@@ -179,14 +134,12 @@ async function summarizeWebpage(url, provider, content) {
 
     const chunks = await textSplitter.splitText(content);
 
-    let chunkTLDRs = [];
-
-    await chunks.reduce(async (promiseChain, chunk) => {
-      await promiseChain;
-      await delay(1000);
-      const generatedTLDR = await generateTLDR(chunk, provider);
-      chunkTLDRs.push(generatedTLDR);
-    }, Promise.resolve());
+    let chunkTLDRs = await Promise.all(
+      chunks.map(async (chunk) => {
+        await delay(1000);
+        return generateTLDR(chunk, provider);
+      })
+    );
 
     if (chunkTLDRs.length === 0) throw new Error("No chunked TL;DRs found");
     const finalTLDR = await generateTLDR(chunkTLDRs.join(" "), provider);
@@ -246,7 +199,12 @@ app.post("/tldr/text", async (req, res) => {
   res.json({ tldr: tldr });
 });
 
-const port = 3000;
+app.get("/fetch-saved-tldrs", async (req, res) => {
+  const savedTLDRs = await TLDR.find();
+  res.json({ savedTLDRs });
+});
+
+const port = 3001;
 app.listen(port, () => {
   console.log(`Server running`);
 });

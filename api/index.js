@@ -43,7 +43,7 @@ const limiter = rateLimit({
   keyGenerator: (req) => {
     console.log(req.headers["x-forwarded-for"]);
     console.log(req.ip);
-    req.headers["x-forwarded-for"] || req.ip;
+    return req.headers["x-forwarded-for"] || req.ip;
   },
 });
 

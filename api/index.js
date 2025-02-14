@@ -40,7 +40,7 @@ const limiter = rateLimit({
   message: "You're only allowed to make two api request per hour.",
   statusCode: 429,
   standardHeaders: "draft-8",
-  keyGenerator: (req) => req.ip,
+  keyGenerator: (req) => req.headers['x-forwarded-for'] || req.ip,
 });
 
 app.use("/tldr/text", limiter);

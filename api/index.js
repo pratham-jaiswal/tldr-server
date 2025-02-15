@@ -131,6 +131,10 @@ function generateTLDR(content, provider) {
         role: "system",
         content: `You're a TL;DR AI.
                   Your task is to provide a clear, concise summary prioritizing relevant concepts. 
+                  - Summarize the core points clearly.
+                  - Exclude section headers unless necessary for clarity.
+                  - Do not list all sections; instead, synthesize the content into essential insights.
+                  - Avoid repetition and unnecessary details.
                   - Omit irrelevant details.
                   - Do not answer questions.
                   - Do not add your own opinion, views, or censoring.
@@ -249,8 +253,8 @@ app.post("/tldr/text", async (req, res) => {
 });
 
 app.get("/fetch-saved-tldrs", async (req, res) => {
-  const savedTLDRs = await TLDR.find();
-  res.json({ savedTLDRs });
+  const savedTLDRs = await TLDR.find().sort({ _id: -1 });
+  return res.json({ savedTLDRs });
 });
 
 const port = 3001;

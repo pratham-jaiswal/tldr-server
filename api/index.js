@@ -197,28 +197,36 @@ app.post("/tldr/url", async (req, res) => {
     return res.status(400).json({ error: "Invalid or missing URL." });
   }
 
-  let existingTLDR = await TLDR.findOne({ url });
-  if (useKnowledgeHub && existingTLDR) {
-    return res.json({ tldr: existingTLDR.tldr });
-  }
+  try {
+    await axios.head(url, { timeout: 5000 });
 
-  limiter(req, res, async (err) => {
-    if (err) return next(err);
-
-    const tldr = await summarizeWebpage(url, provider, null);
-    if (!tldr)
-      return res.status(500).json({ error: "Error generating a TL;DR" });
-
-    if (shouldSave) {
-      existingTLDR = await TLDR.findOneAndUpdate(
-        { url },
-        { tldr },
-        { upsert: true, new: true }
-      );
+    let existingTLDR = await TLDR.findOne({ url });
+    if (useKnowledgeHub && existingTLDR) {
+      return res.json({ tldr: existingTLDR.tldr });
     }
 
-    res.json({ tldr: tldr });
-  });
+    limiter(req, res, async (err) => {
+      if (err) return next(err);
+
+      const tldr = await summarizeWebpage(url, provider, null);
+      if (!tldr)
+        return res.status(500).json({ error: "Error generating a TL;DR" });
+
+      if (shouldSave) {
+        existingTLDR = await TLDR.findOneAndUpdate(
+          { url },
+          { tldr },
+          { upsert: true, new: true }
+        );
+      }
+
+      res.json({ tldr: tldr });
+    });
+  } catch (error) {
+    return res
+      .status(400)
+      .json({ error: "URL does not exist or is unreachable." });
+  }
 });
 
 app.post("/tldr/text", async (req, res) => {
@@ -227,10 +235,17 @@ app.post("/tldr/text", async (req, res) => {
   if (!content || !provider)
     return res.status(400).json({ error: "Insufficient parameters." });
 
-  const tldr = await summarizeWebpage(null, provider, content);
-  if (!tldr) return res.status(500).json({ error: "Error generating a TL;DR" });
+  try {
+    const tldr = await summarizeWebpage(null, provider, content);
+    if (!tldr) {
+      return res.status(500).json({ error: "Error generating a TL;DR" });
+    }
 
-  res.json({ tldr: tldr });
+    res.json({ tldr: tldr });
+  } catch (error) {
+    console.error("Error processing TL;DR request:", error);
+    return res.status(500).json({ error: "Internal server error." });
+  }
 });
 
 app.get("/fetch-saved-tldrs", async (req, res) => {

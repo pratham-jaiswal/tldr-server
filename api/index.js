@@ -9,10 +9,15 @@ import { rateLimit } from "express-rate-limit";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import mongoose from "mongoose";
 import cookieParser from "cookie-parser";
+import mongoSanitize from "express-mongo-sanitize";
+import helmet from "helmet";
+import validator from "validator";
 
 const app = express();
 app.use(express.json());
 app.use(cookieParser());
+app.use(helmet());
+app.use(mongoSanitize());
 
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
@@ -22,6 +27,7 @@ const corsOptions = {
   origin: `${process.env.ALLOWED_ORIGIN}`,
   credentials: true,
 };
+
 app.use(cors(corsOptions));
 
 app.use((req, res, next) => {
@@ -59,7 +65,7 @@ const limiter = rateLimit({
   message: "You're only allowed to make two api request per hour.",
   statusCode: 429,
   standardHeaders: "draft-8",
-  keyGenerator: (req) => req.cookies.user_id ? req.cookies.user_id : req.ip,
+  keyGenerator: (req) => (req.cookies.user_id ? req.cookies.user_id : req.ip),
 });
 
 app.use("/tldr/text", limiter);
@@ -123,8 +129,13 @@ function generateTLDR(content, provider) {
     .invoke([
       {
         role: "system",
-        content: `Provide a clear, concise summary prioritizing relevant concepts. 
-                    Omit irrelevant details. Respond in bullet points without filler phrases.`,
+        content: `You're a TL;DR AI.
+                  Your task is to provide a clear, concise summary prioritizing relevant concepts. 
+                  - Omit irrelevant details.
+                  - Do not answer questions.
+                  - Do not add your own opinion, views, or censoring.
+                  - If the input is a question, summarize it as "User asked a question about [topic]."
+                  - Respond in bullet points without without filler phrases.`,
       },
       { role: "user", content: content },
     ])
@@ -181,6 +192,10 @@ app.post("/tldr/url", async (req, res) => {
     typeof shouldSave === "undefined"
   )
     return res.status(400).json({ error: "Insufficient parameters." });
+
+  if (!validator.isURL(url, { require_protocol: true })) {
+    return res.status(400).json({ error: "Invalid or missing URL." });
+  }
 
   let existingTLDR = await TLDR.findOne({ url });
   if (useKnowledgeHub && existingTLDR) {

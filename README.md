@@ -2,6 +2,9 @@
 
 Summarize any webpage or content and get a TL;DR.
 
+[Website](https://tldr-ai.prathamjaiswal.com)
+[Frontend Code](https://github.com/pratham-jaiswal/tldr-ai)
+
 ## Built with
 
 - [Node.js](https://nodejs.org/)

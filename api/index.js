@@ -92,20 +92,20 @@ const TLDR = mongoose.model("TLDR", tldrSchema);
 
 function fetchWebpageContent(url) {
   return axios
-    .get(url)
-    .then((response) => {
-      const $ = cheerio.load(response.data);
+      .get(`https://api.allorigins.win/get?url=${url}`)
+      .then((response) => {
+          const $ = cheerio.load(response.data.contents);
 
-      $("script, style, noscript").remove();
+          $("script, style, noscript").remove();
 
-      const text = $("body").text().replace(/\s+/g, " ").trim();
+          const text = $("body").text().replace(/\s+/g, " ").trim();
 
-      return text;
-    })
-    .catch((error) => {
-      console.error("Error fetching the webpage:", error);
-      return null;
-    });
+          return text;
+      })
+      .catch((error) => {
+          console.error("Error fetching the webpage:",);
+          return null;
+      });
 }
 
 function delay(ms) {
@@ -202,8 +202,6 @@ app.post("/tldr/url", async (req, res) => {
   }
 
   try {
-    await axios.head(url, { timeout: 5000 });
-
     let existingTLDR = await TLDR.findOne({ url });
     if (useKnowledgeHub && existingTLDR) {
       return res.json({ tldr: existingTLDR.tldr });
@@ -224,7 +222,7 @@ app.post("/tldr/url", async (req, res) => {
         );
       }
 
-      res.json({ tldr: tldr });
+      return res.status(200).json({ tldr: tldr });
     });
   } catch (error) {
     return res
@@ -245,7 +243,7 @@ app.post("/tldr/text", async (req, res) => {
       return res.status(500).json({ error: "Error generating a TL;DR" });
     }
 
-    res.json({ tldr: tldr });
+    return res.status(200).json({ tldr: tldr });
   } catch (error) {
     console.error("Error processing TL;DR request:", error);
     return res.status(500).json({ error: "Internal server error." });
@@ -254,7 +252,7 @@ app.post("/tldr/text", async (req, res) => {
 
 app.get("/fetch-saved-tldrs", async (req, res) => {
   const savedTLDRs = await TLDR.find().sort({ _id: -1 });
-  return res.json({ savedTLDRs });
+  return res.status(200).json({ savedTLDRs });
 });
 
 const port = 3001;

@@ -1,26 +1,36 @@
-import express from "express";
-import cors from "cors";
-import axios from "axios";
-import * as cheerio from "cheerio";
+import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
+import { clerkMiddleware } from "@clerk/express";
+import { ClerkExpressRequireAuth } from "@clerk/clerk-sdk-node";
 import { ChatOpenAI } from "@langchain/openai";
 import { ChatCohere } from "@langchain/cohere";
-import "@dotenvx/dotenvx/config";
 import { rateLimit } from "express-rate-limit";
-import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
-import mongoose from "mongoose";
-import cookieParser from "cookie-parser";
-import mongoSanitize from "express-mongo-sanitize";
-import helmet from "helmet";
+import RedisStore from "rate-limit-redis";
+import * as cheerio from "cheerio";
 import validator from "validator";
+import "@dotenvx/dotenvx/config";
+import mongoose from "mongoose";
+import { Webhook } from "svix";
+import express from "express";
+import helmet from "helmet";
+import Redis from "ioredis";
+import axios from "axios";
+import cors from "cors";
+
+const redisClient = new Redis(process.env.UPSTASH_URL);
 
 const app = express();
 app.use(express.json());
-app.use(cookieParser());
+
+app.use(
+  clerkMiddleware({
+    authorizedParties: [process.env.ALLOWED_ORIGIN],
+    secretKey: process.env.CLERK_SECRET_KEY,
+  })
+);
 app.use(helmet());
-app.use(mongoSanitize());
 
 app.get("/health", (req, res) => {
-  res.json({ status: "ok" });
+  return res.json({ status: "ok" });
 });
 
 const corsOptions = {
@@ -30,45 +40,68 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-app.use((req, res, next) => {
-  const apiKey = req.get("x-api-key");
-  const referrer = req.get("Referer") || "";
-  const validApiKey = process.env.API_KEY;
+function verifyWebhook(req, res, next) {
+  const payload = req.body;
+  const headers = req.headers;
+  const wh = new Webhook(process.env.SVIX_SECRET);
 
-  const allowedReferrer = process.env.ALLOWED_ORIGIN;
-  if (apiKey !== validApiKey || !referrer.startsWith(allowedReferrer)) {
-    return res.status(403).json({ error: "403 Forbidden" });
+  try {
+    let msg = wh.verify(JSON.stringify(payload), headers);
+  } catch (err) {
+    return res.status(400).json({});
   }
 
   next();
+}
+
+const userRateLimiter = rateLimit({
+  store: new RedisStore({
+    sendCommand: (...args) => redisClient.call(...args),
+  }),
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  keyGenerator: (req) => {
+    const cookieStr = req.headers.cookie;
+    if (cookieStr) {
+      const cookies = Object.fromEntries(
+        cookieStr.split(";").map((cookie) => {
+          const [key, value] = cookie.trim().split("=");
+          return [key, value];
+        })
+      );
+
+      const token = cookies["__session"];
+      if (token) {
+        try {
+          const base64Url = sessionJWT.split(".")[1];
+          const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+          const jsonPayload = decodeURIComponent(
+            atob(base64)
+              .split("")
+              .map((c) => `%${`00${c.charCodeAt(0).toString(16)}`.slice(-2)}`)
+              .join("")
+          );
+          const payload = JSON.parse(jsonPayload);
+          const userId = payload.userId;
+          if (userId) return userId;
+        } catch (e) {
+          console.error("JWT decode error:", e);
+        }
+      }
+    }
+
+    return req.ip;
+  },
+  handler: (req, res) => {
+    res
+      .status(429)
+      .json({ error: "Too many requests. Please try again later." });
+  },
 });
 
-app.use((req, res, next) => {
-  if (!req.cookies.user_id) {
-    const userId = Math.random().toString(36).substring(2);
-    res.cookie("user_id", userId, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "None",
-      maxAge: 6 * 60 * 60 * 1000,
-    });
-    req.userId = userId;
-  } else {
-    req.userId = req.cookies.user_id;
-  }
-  next();
-});
-
-const limiter = rateLimit({
-  windowMs: 6 * 60 * 60 * 1000,
-  max: 2,
-  message: "You're only allowed to make two api request per hour.",
-  statusCode: 429,
-  standardHeaders: "draft-8",
-  keyGenerator: (req) => (req.cookies.user_id ? req.cookies.user_id : req.ip),
-});
-
-app.use("/tldr/text", limiter);
+app.use("/validate-user", verifyWebhook);
+app.use("/tldr/url", [ClerkExpressRequireAuth(), userRateLimiter]);
+app.use("/tldr/text", ClerkExpressRequireAuth(), userRateLimiter);
 
 mongoose
   .connect(`${process.env.MONGODB_URI}`, { family: 4 })
@@ -90,22 +123,44 @@ const tldrSchema = new mongoose.Schema({
 });
 const TLDR = mongoose.model("TLDR", tldrSchema);
 
+const userSchema = new mongoose.Schema({
+  fullName: {
+    type: String,
+    required: true,
+  },
+  email: {
+    type: String,
+    required: true,
+    unique: true,
+  },
+  userId: {
+    type: String,
+    required: true,
+    unique: true,
+  },
+  createdAt: {
+    type: Date,
+  },
+});
+
+const User = mongoose.model("User", userSchema);
+
 function fetchWebpageContent(url) {
   return axios
-      .get(`https://api.allorigins.win/get?url=${url}`)
-      .then((response) => {
-          const $ = cheerio.load(response.data.contents);
+    .get(`https://api.allorigins.win/get?url=${url}`)
+    .then((response) => {
+      const $ = cheerio.load(response.data.contents);
 
-          $("script, style, noscript").remove();
+      $("script, style, noscript").remove();
 
-          const text = $("body").text().replace(/\s+/g, " ").trim();
+      const text = $("body").text().replace(/\s+/g, " ").trim();
 
-          return text;
-      })
-      .catch((error) => {
-          console.error("Error fetching the webpage:",);
-          return null;
-      });
+      return text;
+    })
+    .catch((error) => {
+      console.error("Error fetching the webpage:", error);
+      return null;
+    });
 }
 
 function delay(ms) {
@@ -186,6 +241,43 @@ async function summarizeWebpage(url, provider, content) {
   }
 }
 
+app.post("/validate-user", async (req, res) => {
+  const { data, object, type } = req.body;
+  const {
+    id,
+    first_name,
+    last_name,
+    email_addresses,
+    primary_email_address_id,
+    created_at,
+  } = data;
+
+  if (object === "event" && type === "user.created") {
+    const primary_email = email_addresses.find(
+      (email) => primary_email_address_id === email.id
+    );
+    const email = primary_email ? primary_email.email_address : null;
+
+    const existingUser = await User.findOne({ userId: id });
+    if (!existingUser) {
+      const newUser = new User({
+        fullName: `${first_name} ${last_name}`,
+        email: email,
+        userId: id,
+        createdAt: created_at,
+      });
+      await newUser.save();
+    }
+  } else if (object === "event" && type === "session.created") {
+    const existingUser = await User.findOne({ userId: id });
+    if (!existingUser) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+  }
+
+  return res.json({ status: "success" });
+});
+
 app.post("/tldr/url", async (req, res) => {
   const { url, provider, useKnowledgeHub, shouldSave } = req.body;
 
@@ -251,8 +343,13 @@ app.post("/tldr/text", async (req, res) => {
 });
 
 app.get("/fetch-saved-tldrs", async (req, res) => {
-  const savedTLDRs = await TLDR.find().sort({ _id: -1 });
-  return res.status(200).json({ savedTLDRs });
+  try {
+    const savedTLDRs = await TLDR.find().sort({ _id: -1 });
+    return res.status(200).json({ savedTLDRs });
+  } catch (error) {
+    console.error("Error fetching saved TL;DRs:", error);
+    return res.status(500).json({ error: "Internal server error." });
+  }
 });
 
 const port = 3001;

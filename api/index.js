@@ -1,6 +1,6 @@
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
-import { clerkMiddleware } from "@clerk/express";
 import { ClerkExpressRequireAuth } from "@clerk/clerk-sdk-node";
+import { clerkMiddleware } from "@clerk/express";
 import { ChatOpenAI } from "@langchain/openai";
 import { ChatCohere } from "@langchain/cohere";
 import { rateLimit } from "express-rate-limit";
@@ -101,7 +101,7 @@ const userRateLimiter = rateLimit({
 
 app.use("/validate-user", verifyWebhook);
 app.use("/tldr/url", [ClerkExpressRequireAuth(), userRateLimiter]);
-app.use("/tldr/text", ClerkExpressRequireAuth(), userRateLimiter);
+app.use("/tldr/text", [ClerkExpressRequireAuth(), userRateLimiter]);
 
 mongoose
   .connect(`${process.env.MONGODB_URI}`, { family: 4 })

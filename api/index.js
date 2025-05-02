@@ -16,10 +16,17 @@ import Redis from "ioredis";
 import axios from "axios";
 import cors from "cors";
 
-const redisClient = new Redis(process.env.UPSTASH_URL);
-
 const app = express();
 app.use(express.json());
+
+const redisClient = new Redis(process.env.UPSTASH_URL, {
+  tls: {},
+  reconnectOnError: () => true,
+});
+
+redisClient.on("error", (err) => {
+  console.error("Redis error:", err);
+});
 
 app.use(
   clerkMiddleware({
@@ -58,8 +65,8 @@ const userRateLimiter = rateLimit({
   store: new RedisStore({
     sendCommand: (...args) => redisClient.call(...args),
   }),
-  windowMs: 15 * 60 * 1000,
-  max: 20,
+  windowMs: 6 * 60 * 60 * 1000,
+  max: 2,
   keyGenerator: (req) => {
     const cookieStr = req.headers.cookie;
     if (cookieStr) {
@@ -73,7 +80,7 @@ const userRateLimiter = rateLimit({
       const token = cookies["__session"];
       if (token) {
         try {
-          const base64Url = sessionJWT.split(".")[1];
+          const base64Url = token.split(".")[1];
           const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
           const jsonPayload = decodeURIComponent(
             atob(base64)

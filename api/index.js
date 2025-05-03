@@ -497,7 +497,7 @@ app.get("/connect/patreon/callback", async (req, res) => {
       );
     }
 
-    return res.redirect("http://192.168.29.237:3000");
+    return res.redirect(`${process.env.ALLOWED_ORIGIN}`);
   } catch (err) {
     console.error("Patreon OAuth error:", err.response?.data || err.message);
     return res.status(500).send("OAuth failed");

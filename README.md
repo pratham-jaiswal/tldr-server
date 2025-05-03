@@ -1,20 +1,20 @@
-# TLDR AI
+# TL;DR AI
 
 TL;DR AI helps users quickly understand lengthy articles, papers, and content by generating concise summaries. Our goal is to make information more accessible and easier to consume.
 
-Check out the [website](https://tldr-ai.prathamjaiswal.com).
+Check out [tl;dr ai](https://tldr-ai.prathamjaiswal.com).
 
 ## How It Works
 
 TL;DR AI offers two ways to generate summaries:
-- From a URL: Paste a link and get a summary of its content.
-- From Text: Enter text manually to generate a concise summary.
+- **From a URL:** Paste a link and get a summary of its content.
+- **From Text:** Enter text manually to generate a concise summary.
 
 ## AI Model Options
 
 Users can choose between:
 - OpenAI GPT-4o mini
-- Cohere Command R
+- OpenAI GPT-4.1 nano
 
 ## Saved Summaries
 
@@ -42,4 +42,3 @@ Users can choose between:
 - [Express](https://expressjs.com/)
 - [LangChain](https://js.langchain.com/)
 - [OpenAI](https://openai.com/)
-- [Cohere](https://cohere.ai/)

@@ -514,18 +514,55 @@ app.get("/get-user", async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    const tier = existingUser.patreonDetails?.tier?.toLowerCase();
-    if (!tier || !rateLimits[tier]) {
-      return res.status(400).json({ error: "Invalid or missing tier" });
-    }
+    const fetchedTier = existingUser.patreonDetails?.tier?.toLowerCase();
 
     const userDetails = {
       ...existingUser.toObject(),
       patreonDetails: {
         ...existingUser.patreonDetails,
-        rateLimit: rateLimits[tier],
+        rateLimit: rateLimits[fetchedTier],
       },
     };
+    if (!fetchedTier || !rateLimits[fetchedTier]) {
+      return res.json({ userDetails: userDetails });
+    }
+
+    const memberId = userDetails.patreonDetails?.patreonId;
+    if (!memberId) {
+      return res.json({ userDetails: userDetails });
+    }
+
+    try {
+      const response = await axios.get(
+        `https://www.patreon.com/api/oauth2/v2/members/${memberId}?include=currently_entitled_tiers&fields[tier]=title`,
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.PATREON_CREATOR_ACCESS_TOKEN}`,
+          },
+        }
+      );
+
+      const currentlyEntitledTier = response.data.data.attributes;
+
+      const tier = response.data.included.find(
+        (tier) => tier.id === currentlyEntitledTier
+      )?.attributes.title;
+
+      if (!tier) {
+        await User.updateOne(
+          { userId: userDetails.userId },
+          { $set: { patreonDetails: {} } }
+        );
+      } else if (fetchedTier !== tier) {
+        userDetails.patreonDetails.tier = tier;
+        await User.updateOne(
+          { userId: userDetails.userId },
+          { $set: { "patreonDetails.tier": tier } }
+        );
+      }
+    } catch (err) {
+      console.error("Patreon API error:", err.response?.data || err.message);
+    }
 
     return res.json({ userDetails: userDetails });
   } catch (error) {

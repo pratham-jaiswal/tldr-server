@@ -107,7 +107,7 @@ const userRateLimiter = rateLimit({
 });
 
 app.use("/validate-user", verifyWebhook);
-app.use("/tldr/url", [ClerkExpressRequireAuth(), userRateLimiter]);
+app.use("/tldr/url", ClerkExpressRequireAuth());
 app.use("/tldr/text", [ClerkExpressRequireAuth(), userRateLimiter]);
 
 mongoose
@@ -174,18 +174,11 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function generateTLDR(content, provider) {
-  const llm =
-    provider === "OpenAI GPT-4o mini"
-      ? new ChatOpenAI({
-          model: "gpt-4o-mini",
-          temperature: 0,
-        })
-      : new ChatCohere({
-          model: "command-r",
-          temperature: 0,
-          maxRetries: 1,
-        });
+function generateTLDR(content, model) {
+  const llm = new ChatOpenAI({
+    model: model,
+    temperature: 0,
+  });
 
   return llm
     .invoke([
@@ -214,7 +207,7 @@ function generateTLDR(content, provider) {
     });
 }
 
-async function summarizeWebpage(url, provider, content) {
+async function summarizeWebpage(url, model, content) {
   try {
     if (!content && !url) throw new Error("No content to summarize");
 
@@ -233,12 +226,12 @@ async function summarizeWebpage(url, provider, content) {
     let chunkTLDRs = await Promise.all(
       chunks.map(async (chunk) => {
         await delay(1000);
-        return generateTLDR(chunk, provider);
+        return generateTLDR(chunk, model);
       })
     );
 
     if (chunkTLDRs.length === 0) throw new Error("No chunked TL;DRs found");
-    const finalTLDR = await generateTLDR(chunkTLDRs.join(" "), provider);
+    const finalTLDR = await generateTLDR(chunkTLDRs.join(" "), model);
     if (!finalTLDR) throw new Error("Error generating final TL;DR");
 
     return finalTLDR;
@@ -247,6 +240,7 @@ async function summarizeWebpage(url, provider, content) {
     return null;
   }
 }
+const validModels = ["gpt-4o-mini", "gpt-4.1-nano"];
 
 app.post("/validate-user", async (req, res) => {
   const { data, object, type } = req.body;
@@ -286,15 +280,19 @@ app.post("/validate-user", async (req, res) => {
 });
 
 app.post("/tldr/url", async (req, res) => {
-  const { url, provider, useKnowledgeHub, shouldSave } = req.body;
+  const { url, model, useKnowledgeHub, shouldSave } = req.body;
 
   if (
     !url ||
-    !provider ||
+    !model ||
     typeof useKnowledgeHub === "undefined" ||
     typeof shouldSave === "undefined"
   )
     return res.status(400).json({ error: "Insufficient parameters." });
+
+  if (!validModels.includes(model)) {
+    return res.status(400).json({ error: "Invalid model." });
+  }
 
   if (!validator.isURL(url, { require_protocol: true })) {
     return res.status(400).json({ error: "Invalid or missing URL." });
@@ -306,10 +304,10 @@ app.post("/tldr/url", async (req, res) => {
       return res.json({ tldr: existingTLDR.tldr });
     }
 
-    limiter(req, res, async (err) => {
+    userRateLimiter(req, res, async (err) => {
       if (err) return next(err);
 
-      const tldr = await summarizeWebpage(url, provider, null);
+      const tldr = await summarizeWebpage(url, model, null);
       if (!tldr)
         return res.status(500).json({ error: "Error generating a TL;DR" });
 
@@ -331,13 +329,17 @@ app.post("/tldr/url", async (req, res) => {
 });
 
 app.post("/tldr/text", async (req, res) => {
-  const { content, provider } = req.body;
+  const { content, model } = req.body;
 
-  if (!content || !provider)
+  if (!content || !model)
     return res.status(400).json({ error: "Insufficient parameters." });
 
+  if (!validModels.includes(model)) {
+    return res.status(400).json({ error: "Invalid model." });
+  }
+
   try {
-    const tldr = await summarizeWebpage(null, provider, content);
+    const tldr = await summarizeWebpage(null, model, content);
     if (!tldr) {
       return res.status(500).json({ error: "Error generating a TL;DR" });
     }

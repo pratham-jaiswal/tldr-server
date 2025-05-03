@@ -19,6 +19,18 @@ import cors from "cors";
 const app = express();
 app.use(express.json());
 
+app.get("/", (req, res) => {
+  res.send("Hi");
+});
+
+app.get("/favicon.ico", (req, res) => {
+  res.status(204).end();
+});
+
+app.get("/favicon.png", (req, res) => {
+  res.status(204).end();
+});
+
 const redisClient = new Redis(process.env.UPSTASH_URL, {
   tls: {},
   reconnectOnError: () => true,

@@ -482,6 +482,11 @@ app.get("/connect/patreon/callback", async (req, res) => {
     const member_id = identityRes?.data?.included?.[0]?.id;
 
     if (member_id) {
+      const existingUser = await User.findOne({ "patreonDetails.patreonId": member_id });
+      if (existingUser) {
+        return res.status(400).json({ error: "Patreon member ID already registered with different user" });
+      }
+
       const memberUrl = `https://www.patreon.com/api/oauth2/v2/members/${member_id}?include=currently_entitled_tiers&fields%5Btier%5D=title`;
       const response = await axios.get(memberUrl, {
         headers: {

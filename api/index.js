@@ -93,6 +93,13 @@ redisClient.on("error", (err) => {
   console.error("Redis error:", err);
 });
 
+function logConsole(req, res, next) {
+  console.log(process.env.ALLOWED_ORIGIN);
+  next();
+}
+
+app.use(logConsole);
+
 app.use(
   clerkMiddleware({
     authorizedParties: [
